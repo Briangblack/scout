@@ -13,18 +13,48 @@ timezone = "America/Chicago"
 user_agent = "scout/0.1 (briangblack@gmail.com)"
 
 [drive]
+# Shared driving physics used by every profile.
 road_factor = 1.25       # multiplier on great-circle distance to approximate road distance
 avg_mph = 50              # assumed average driving speed
-max_drive_minutes = 120   # default for --max-drive
 
 [output]
-top = 5                   # default for --top
+top = 5                   # default for --top, shared across profiles
 
-[scoring]
+# ---------------------------------------------------------------------------
+# photo profile (scout.py)
+# ---------------------------------------------------------------------------
+
+[photo]
+max_drive_minutes = 120   # default for --max-drive
 ideal_sky_cover = 45      # percent — sky score peaks here, not at 0
 sky_tolerance = 55        # how fast the sky score falls off away from ideal
 
-[scoring.weights]
+[photo.weights]
 sky = 0.6
 precip = 0.25
 drive = 0.15
+
+# ---------------------------------------------------------------------------
+# storm profile (storm.py)
+# ---------------------------------------------------------------------------
+
+[storm]
+max_drive_minutes = 360   # chase days are long drives
+cache_ttl_minutes = 15    # SPC outlooks update a handful of times a day
+targets_file = "chase_targets.csv"
+
+# SPC categorical outlook risk -> score (0..1). Peaks at ENH rather than HIGH:
+# high-end days skew toward fast, messy squall lines, while SLGT/ENH days
+# more often produce the discrete, photogenic supercells worth chasing.
+# This is a photographer's bias, not a severity ranking - argue with it.
+[storm.risk_scores]
+TSTM = 0.15
+MRGL = 0.35
+SLGT = 0.70
+ENH  = 1.00
+MDT  = 0.85
+HIGH = 0.75
+
+[storm.weights]
+risk = 0.65
+drive = 0.35

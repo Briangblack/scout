@@ -1,12 +1,15 @@
 # scout
 
-Answers one question: **"Where should I drive tonight to shoot the sunset?"**
+Two CLI tools that share one engine: pull external data around a location, filter by drive
+time, score, rank.
 
-Pulls tonight's golden hour window, estimates drive time to a list of candidate
-locations, fetches the NWS sky-cover and precipitation forecast for each, scores
-them, and prints a ranked table.
+- **`scout.py`** — *"Where should I drive tonight to shoot the sunset?"* Golden hour photo
+  location scout, using NWS sky-cover forecasts.
+- **`storm.py`** — *"Where should we point the truck today?"* Storm-chase target scout, using
+  SPC convective outlooks.
 
 ```
+$ python scout.py
 Golden hour: 2026-09-07 19:00 - 19:53 CDT
 
  score                            location  drive_min  sky_%  precip_%
@@ -14,22 +17,34 @@ Golden hour: 2026-09-07 19:00 - 19:53 CDT
   81.9                      Eagle Spotting         23     31         0
   80.4                  Horns Ferry Bridge         26     30         0
   79.5                   Ledges State Park         77     55         0
+
+$ python storm.py
+SPC Day 1 Convective Outlook
+Issued 2026-09-07 16:12Z by Hart/Thornton - valid through 2026-09-08 12:00Z
+
+ score         location  drive_min risk
+  53.7 North Platte, NE        584 MRGL
+  44.5   Des Moines, IA         34 TSTM
+  32.0       Salina, KS        433   --
 ```
 
-## Why sky cover peaks in the middle, not at 0%
+## The domain insight in each scoring curve
 
-A clear sky is a boring sunset — nothing up there to catch the light. Full
-overcast is flat gray. The dramatic ones happen at partial cloud cover, where
-there's enough cloud to light up and enough gap for the light to reach it.
-The scoring curve peaks around 45% cover and falls off toward both extremes —
-tune it in `config.toml` under `[scoring]`.
+**Photo:** a clear sky is a boring sunset — nothing up there to catch the light. Full overcast is
+flat gray. The dramatic ones happen at partial cloud cover, where there's enough cloud to light up
+and enough gap for the light to reach it. The curve peaks around 45% cover and falls off toward
+both extremes — tune it in `config.toml` under `[photo]`.
+
+**Storm:** the curve peaks at **ENH**, not **HIGH**. High-end risk days often mean fast, messy
+squall lines; the more photogenic discrete supercells cluster more in the SLGT/ENH range. That's a
+photographer's bias, not a severity ranking — argue with it and retune `[storm.risk_scores]`.
 
 ## Setup
 
 Requires Python 3.11+ (uses stdlib `tomllib`).
 
 ```bash
-pip install pandas requests astral
+pip install pandas requests astral shapely
 ```
 
 1. Edit `config.toml`:
@@ -37,42 +52,58 @@ pip install pandas requests astral
      need to be your exact address)
    - `[nws] user_agent` — api.weather.gov requires a contact string; put in
      your own email
-2. Edit `locations.csv` — one row per candidate spot: `name,lat,lon,notes`
-3. Run it:
+2. Edit `locations.csv` (for `scout.py`) and/or `chase_targets.csv` (for `storm.py`) —
+   `name,lat,lon,notes` per row
+3. Run either:
 
 ```bash
 python scout.py
+python storm.py
 ```
 
 ## Usage
 
 ```
 python scout.py [--date YYYY-MM-DD] [--max-drive 120] [--top 5]
+python storm.py [--day 1|2|3] [--max-drive 360] [--top 5]
 ```
 
-| Flag | Default | Meaning |
-|---|---|---|
-| `--date` | today | Target date for golden hour |
-| `--max-drive` | from `config.toml` | One-way drive minutes cutoff — locations beyond this are excluded before any API call |
-| `--top` | from `config.toml` | How many ranked results to print |
+| Flag | Applies to | Default | Meaning |
+|---|---|---|---|
+| `--date` | scout | today | Target date for golden hour |
+| `--day` | storm | `1` | SPC outlook day (1-3 only — that's all SPC publishes) |
+| `--max-drive` | both | from `config.toml` | One-way drive minutes cutoff — targets beyond this are excluded before any API call |
+| `--top` | both | from `config.toml` | How many ranked results to print |
 
 ## How it works
 
-1. Compute tonight's evening golden hour window locally via `astral` — no API,
-   no key.
-2. Estimate drive time to each location via great-circle distance × a road
-   fudge factor (not real routing — see `PLAN.md` for why, and what v2 swaps
-   in instead).
+Both tools share `engine.py`: config/CSV loading, the haversine drive-time estimate, HTTP retry,
+generic file caching, and the ranked-table renderer. Each tool owns only its own data fetch and
+scoring curve.
+
+**scout.py:**
+1. Compute tonight's evening golden hour window locally via `astral` — no API, no key.
+2. Estimate drive time via great-circle distance × a road fudge factor (not real routing — see
+   `PLAN.md` for why, and what v2 swaps in instead).
 3. Drop anything beyond `--max-drive` before making any weather calls.
-4. For each surviving location, look up its NWS forecast grid (cached in
-   `.cache/points.json` — grid coordinates never change) and fetch sky cover +
-   precipitation probability for the golden-hour start time.
-5. Score = weighted blend of sky-cover-closeness-to-45%, low precip chance,
-   and short drive time. Weights live in `config.toml`.
-6. Print ranked results; note any locations skipped for missing forecast data.
+4. For each surviving location, look up its NWS forecast grid (cached in `.cache/points.json` —
+   grid coordinates never change) and fetch sky cover + precipitation for the golden-hour start.
+5. Score = weighted blend of sky-cover-closeness-to-45%, low precip chance, short drive time.
+
+**storm.py:**
+1. Fetch the SPC Day N categorical convective outlook (one national GeoJSON file, cached for
+   `[storm] cache_ttl_minutes` since it only updates a few times a day).
+2. For each target, point-in-polygon test against the outlook's risk areas (TSTM/MRGL/SLGT/ENH/
+   MDT/HIGH — cut out, not nested, so a point matches at most one).
+3. Score = weighted blend of risk-category score and drive time. A target outside every risk area
+   scores 0 risk (shown as `--`) — that's a real result, not missing data. See `PLAN_STORM.md`.
+
+Built with a predictor seam (`Predictor.prepare()` / `.score_location()`) so a second data source
+— a probabilistic hazard layer, a mesoanalysis parameter — plugs in as another predictor blended
+into the same score, without restructuring `storm.py`.
 
 ## What this isn't (yet)
 
-No database, no web UI, no storm-chase scoring, no real routing API, no
-visit/photo log, no scheduling. See `PLAN.md` for the full v1 spec and the
-reasoning behind what got left out.
+No database, no web UI, no real routing API, no visit/photo log, no scheduling, no probabilistic
+hazard layers, no mesoanalysis parameters. See `PLAN.md` and `PLAN_STORM.md` for the full specs
+and the reasoning behind what got left out.
