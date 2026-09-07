@@ -1,0 +1,30 @@
+# scout config
+
+[home]
+# Casey's, Pleasantville, IA - a public starting point rather than an exact home address
+lat = 41.39334233956626
+lon = -93.2791261999343
+timezone = "America/Chicago"
+
+[nws]
+# api.weather.gov requires a User-Agent identifying the client. Replace the
+# email below with your own contact info before running for real — NWS asks
+# for this so they can reach you if your client misbehaves.
+user_agent = "scout/0.1 (briangblack@gmail.com)"
+
+[drive]
+road_factor = 1.25       # multiplier on great-circle distance to approximate road distance
+avg_mph = 50              # assumed average driving speed
+max_drive_minutes = 120   # default for --max-drive
+
+[output]
+top = 5                   # default for --top
+
+[scoring]
+ideal_sky_cover = 45      # percent — sky score peaks here, not at 0
+sky_tolerance = 55        # how fast the sky score falls off away from ideal
+
+[scoring.weights]
+sky = 0.6
+precip = 0.25
+drive = 0.15
