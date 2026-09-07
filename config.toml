@@ -13,9 +13,22 @@ timezone = "America/Chicago"
 user_agent = "scout/0.1 (briangblack@gmail.com)"
 
 [drive]
-# Shared driving physics used by every profile.
+# Shared driving physics used by every profile. Also the offline fallback
+# formula whenever real routing is disabled or unavailable.
 road_factor = 1.25       # multiplier on great-circle distance to approximate road distance
 avg_mph = 50              # assumed average driving speed
+
+[routing]
+# "osrm" = real road routing via the public OSRM demo server (keyless).
+# "haversine" = the old great-circle estimate, no network calls at all -
+# useful if the demo server is down or you're offline before a chase.
+provider = "osrm"
+osrm_base = "https://router.project-osrm.org"
+# Used only to PREFILTER targets before making a routing call: a target is
+# excluded without a network request if it can't possibly be reached even
+# at this (deliberately generous) speed. Must stay well above avg_mph above,
+# or it could wrongly exclude a real interstate-reachable target.
+prefilter_max_mph = 80
 
 [output]
 top = 5                   # default for --top, shared across profiles

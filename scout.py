@@ -144,10 +144,8 @@ def main() -> int:
 
     locations = engine.load_locations("locations.csv")
 
-    locations["drive_min"] = locations.apply(
-        lambda row: engine.estimate_drive_minutes(cfg, home["lat"], home["lon"], row["lat"], row["lon"]),
-        axis=1,
-    )
+    drive_result = engine.compute_drive_minutes(cfg, home["lat"], home["lon"], locations, args.max_drive)
+    locations["drive_min"] = drive_result.minutes
 
     reachable = locations[locations["drive_min"] <= args.max_drive].copy()
     excluded_by_drive = len(locations) - len(reachable)
@@ -190,6 +188,8 @@ def main() -> int:
     notes = []
     if excluded_by_drive:
         notes.append(f"{excluded_by_drive} location(s) excluded: beyond max drive time")
+    if drive_result.estimated_count:
+        notes.append(f"drive times for {drive_result.estimated_count} location(s) estimated - routing unavailable")
     if skipped_no_data:
         notes.append(f"{skipped_no_data} location(s) skipped: no forecast data")
     engine.print_notes(notes)
