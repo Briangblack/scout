@@ -13,20 +13,24 @@ $ python scout.py
 Golden hour: 2026-09-07 19:00 - 19:53 CDT
 
  score                            location  drive_min  sky_%  precip_%
-  91.3 Neal Smith National Wildlife Refuge         17     39         0
-  81.9                      Eagle Spotting         23     31         0
-  80.4                  Horns Ferry Bridge         26     30         0
-  79.5                   Ledges State Park         77     55         0
+  89.2 Neal Smith National Wildlife Refuge         34     39         0
+  80.6                      Eagle Spotting         33     31         0
+  78.6                  Horns Ferry Bridge         40     30         0
+  77.9                   Ledges State Park         90     55         0
 
 $ python storm.py
 SPC Day 1 Convective Outlook
 Issued 2026-09-07 16:12Z by Hart/Thornton - valid through 2026-09-08 12:00Z
 
- score         location  drive_min risk
-  53.7 North Platte, NE        584 MRGL
-  44.5   Des Moines, IA         34 TSTM
-  32.0       Salina, KS        433   --
+ score              location  drive_min risk
+  44.4       Oskaloosa, Iowa         44 TSTM
+  43.4        Albert Lea, MN        193 TSTM
+  43.3 Nebraska Crossing, NE        202 TSTM
+  43.3        St. Joseph, MO        212 TSTM
+  32.1            Salina, KS        421   --
 ```
+
+`drive_min` is real road time now, not a straight-line guess — see below.
 
 ## The domain insight in each scoring curve
 
@@ -77,18 +81,26 @@ python storm.py [--day 1|2|3] [--max-drive 360] [--top 5]
 
 ## How it works
 
-Both tools share `engine.py`: config/CSV loading, the haversine drive-time estimate, HTTP retry,
-generic file caching, and the ranked-table renderer. Each tool owns only its own data fetch and
-scoring curve.
+Both tools share `engine.py`: config/CSV loading, drive-time routing, HTTP retry, generic file
+caching, and the ranked-table renderer. Each tool owns only its own data fetch and scoring curve.
+
+**Drive time** is real road routing via the public [OSRM](https://project-osrm.org/) demo server
+(keyless — no signup, no API key to leak from a public repo). Before routing anything, a
+great-circle distance prefilter drops targets that are provably unreachable at a generous assumed
+speed, so `--max-drive` still excludes far-away targets with zero network calls. Routed times are
+cached permanently in `.cache/drive_times.json` (drive time between two fixed points doesn't
+change on any timescale that matters here). If routing fails or is unreachable, affected targets
+silently fall back to the old great-circle estimate and a footer note says so — a run never dies
+because a community demo server is down. Set `[routing] provider = "haversine"` in `config.toml`
+to skip real routing entirely (useful offline, e.g. before a chase with no signal). Full rationale
+in `PLAN_ROUTING.md`.
 
 **scout.py:**
 1. Compute tonight's evening golden hour window locally via `astral` — no API, no key.
-2. Estimate drive time via great-circle distance × a road fudge factor (not real routing — see
-   `PLAN.md` for why, and what v2 swaps in instead).
-3. Drop anything beyond `--max-drive` before making any weather calls.
-4. For each surviving location, look up its NWS forecast grid (cached in `.cache/points.json` —
+2. Drop anything beyond `--max-drive` before making any weather calls.
+3. For each surviving location, look up its NWS forecast grid (cached in `.cache/points.json` —
    grid coordinates never change) and fetch sky cover + precipitation for the golden-hour start.
-5. Score = weighted blend of sky-cover-closeness-to-45%, low precip chance, short drive time.
+4. Score = weighted blend of sky-cover-closeness-to-45%, low precip chance, short drive time.
 
 **storm.py:**
 1. Fetch the SPC Day N categorical convective outlook (one national GeoJSON file, cached for
@@ -104,6 +116,6 @@ into the same score, without restructuring `storm.py`.
 
 ## What this isn't (yet)
 
-No database, no web UI, no real routing API, no visit/photo log, no scheduling, no probabilistic
-hazard layers, no mesoanalysis parameters. See `PLAN.md` and `PLAN_STORM.md` for the full specs
-and the reasoning behind what got left out.
+No database, no web UI, no isochrone-based grid search, no visit/photo log, no scheduling, no
+probabilistic hazard layers, no mesoanalysis parameters. See `PLAN.md`, `PLAN_STORM.md`, and
+`PLAN_ROUTING.md` for the full specs and the reasoning behind what got left out.

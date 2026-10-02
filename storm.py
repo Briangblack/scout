@@ -172,10 +172,9 @@ def main() -> int:
         return 1
 
     targets = engine.load_locations(storm_cfg["targets_file"])
-    targets["drive_min"] = targets.apply(
-        lambda row: engine.estimate_drive_minutes(cfg, home["lat"], home["lon"], row["lat"], row["lon"]),
-        axis=1,
-    )
+
+    drive_result = engine.compute_drive_minutes(cfg, home["lat"], home["lon"], targets, args.max_drive)
+    targets["drive_min"] = drive_result.minutes
 
     reachable = targets[targets["drive_min"] <= args.max_drive].copy()
     excluded_by_drive = len(targets) - len(reachable)
@@ -203,6 +202,8 @@ def main() -> int:
     notes = []
     if excluded_by_drive:
         notes.append(f"{excluded_by_drive} target(s) excluded: beyond max drive time")
+    if drive_result.estimated_count:
+        notes.append(f"drive times for {drive_result.estimated_count} target(s) estimated - routing unavailable")
     engine.print_notes(notes)
 
     return 0
